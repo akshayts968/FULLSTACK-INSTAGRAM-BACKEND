@@ -2,7 +2,7 @@ const User = require('../model/User');
 const Reset = require('../utils/Reset');
 const allUser =  async (req, res) => {
     try {
-        const result = await User.find({}, '_id username profile name');
+        const result = await User.find({}, '_id username profile name story');
         res.json(result);
     } catch (error) {
         res.status(500).json({ message: error.message });

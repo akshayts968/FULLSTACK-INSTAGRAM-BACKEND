@@ -14,15 +14,19 @@ const messageSchema = new Schema({
   },
   content: {
     type: String,
-    required: true
+    required: false
   },
+  media: [{
+    type: String
+  }],
   timestamp: {
     type: Date,
     default: Date.now
   },
-  read: {
-    type: Boolean,
-    default: false
+  status: {
+    type: String,
+    enum: ['sent', 'delivered', 'read'],
+    default: 'sent'
   }
 });
 

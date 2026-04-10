@@ -13,7 +13,9 @@ const newUser=new Schema({
     },
     highlight:[
         {
-        type:String,
+            name: { type: String, default: 'Highlight' },
+            cover: { type: String },
+            medias: [{ type: String }]
         }
     ],
     profile:{

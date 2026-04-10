@@ -3,150 +3,292 @@ const User = require('../model/User');
 const Comment = require('../model/Comment');
 const cloudinary = require('../config/cloudinary')
 
-const createPost = async (req, res) => {
-    const id = req.params.id;
-    const postUrl = req.file ? req.file.path : null;
-    const body = Object.assign({}, req.body);
-    const description = body.Description;
-    //console.log(body,description);
-    try {
-        if (!postUrl) {
-            throw new Error("No file uploaded");
-        }
-
-        const newPost = new Post({
-            videourl: postUrl,
-            postOwner:id,
-            description: description || "",
-        });
-
-        const savedPost = await newPost.save();
-        
-        const user = await User.findByIdAndUpdate(
-            id,
-            { $push: { post: savedPost._id }, $inc: { nPost: 1 } },
-            { new: true } 
-        );
-
-        console.log(savedPost, user);
-        res.status(201).json({savedPost,user}); 
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: "Failed to create post" });
+const extractMention = (comment) => {
+  if (!comment) return { mention: null, remaining: "" };
+  const strComment = String(comment);
+  
+  if (strComment.startsWith('@')) {
+    const spaceIndex = strComment.indexOf(' ');
+    if (spaceIndex !== -1) {
+      return {
+        mention: strComment.substring(0, spaceIndex),
+        remaining: strComment.substring(spaceIndex + 1).trim()
+      };
+    } else {
+      return {
+        mention: strComment,
+        remaining: ""
+      };
     }
+  }
+  return { mention: null, remaining: strComment.trim() };
+};
+
+const createPost = async (req, res) => {
+  req.setTimeout(300000);
+  const id = req.params.id;
+  const body = Object.assign({}, req.body);
+  const description = body.Description;
+  console.log(body, "THIS is body of create post")
+
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: "No file uploaded or file exceeds 10MB limit." });
+    }
+
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const resType = isVideo ? 'video' : 'image';
+
+    const streamUpload = (req) => {
+      return new Promise((resolve, reject) => {
+        let stream = cloudinary.uploader.upload_stream(
+          { folder: "wanderlust_DEV", resource_type: resType, chunk_size: 6000000, timeout: 240000 },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+        const { Readable } = require('stream');
+        Readable.from(req.file.buffer).pipe(stream);
+      });
+    };
+
+    const result = await streamUpload(req);
+    const postUrl = result.secure_url;
+
+    // --- NEW THUMBNAIL LOGIC ---
+    let thumbnailUrl = postUrl;
+    if (isVideo) {
+      // Cloudinary trick: change the video extension to .jpg to get the generated thumbnail
+      thumbnailUrl = postUrl.replace(/\.[^/.]+$/, ".jpg");
+    }
+    // ---------------------------
+
+    let parsedTags = [];
+    if (req.body.tags) {
+      try {
+        parsedTags = typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags;
+      } catch (e) {
+        console.error('Tag parsing error:', e);
+        parsedTags = [req.body.tags];
+      }
+    }
+
+    const newPost = new Post({
+      videourl: postUrl,
+      thumbnailUrl: thumbnailUrl, // Save the newly created thumbnail URL
+      postOwner: id,
+      description: description || "",
+      isReel: req.body.isReel === 'true' || req.body.isReel === true,
+      taggedUsers: parsedTags
+    });
+
+    const savedPost = await newPost.save();
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $push: { post: savedPost._id }, $inc: { nPost: 1 } },
+      { new: true }
+    );
+
+    res.status(201).json({ savedPost, user });
+  } catch (error) {
+    console.error("Upload Error controller:", error);
+    res.status(500).json({ message: "Failed to create post. Please check file size and connection." });
+  }
 };
 
 const getPost = async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id).populate("post");
-        res.json({ data: user.post, User: user });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
+  try {
+    const user = await User.findById(req.params.id).populate("post");
+    res.json({ data: user.post, User: user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getPostByUser = async (req, res) => {
+  try {
+    const queryParam = req.params.username;
+    let query = { username: queryParam };
+    const mongoose = require('mongoose');
+    if (mongoose.Types.ObjectId.isValid(queryParam)) {
+      query = { $or: [{ _id: queryParam }, { username: queryParam }] };
     }
+    const user = await User.findOne(query).populate("post");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ data: user.post, User: user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 const updatePost = async (req, res) => {
-    const { commentId, post } = req.body;
-      try {
-          const { mention, remaining } = extractMention(req.body.comment);
-        const CommentData = new Comment({
-          text:remaining,
-          owner: req.body.userId,
-          replies: [], 
-        });
-        console.log("Naina",mention,remaining,CommentData);
-        const savedComment = await CommentData.save();
-        let updateUserResult;
-        if (mention) {
-          updateUserResult = await Comment.findByIdAndUpdate(
-            commentId,
-            {
-              $push: { replies: savedComment._id },
-              $inc: { nReply: 1 },
-            },
-            { new: true }
-          );
-          console.log('Comment updated:', updateUserResult);
-        }else{
-          updateUserResult = await Post.findByIdAndUpdate(
-            req.body.post,
-            {
-              $push: { comments: savedComment._id },
-              $inc: { nComments: 1 },
-            },
-            { new: true }
-          );
-        }
-        
-    
-        res.status(200).json({savedComment,updateUserResult}); // Sending the saved comment back in the response
-      } catch (error) {
-        console.error("Error updating post with new comment:", error);
-        res.status(500).json({ error: "Internal Server Error" });
-      }
-    };
-
-const deletePost =  async (req, res) => {
-    const { id } = req.params;
-  
-    try {
-      const post = await Post.findById(id);
-      if (!post) {
-        return res.status(404).json({ message: 'Post not found' });
-      }
-      const userId = post.postOwner._id;
-      console.log(post.videourl,"data to delete");
-        const urlParts = post.videourl.split('/');
-        const publicIdWithExtension = urlParts.slice(-1)[0];
-        const publicId = publicIdWithExtension.split('.')[0];
-
-        console.log('Extracted Public ID:', publicId); // Should print: wanderlust_DEV/jhzsrwgy5o0rddipl22u
-
-        await cloudinary.uploader.destroy(`wanderlust_DEV/${publicId}`, (error, result) => {
-        if (error) {
-            console.error('Error deleting image:', error);
-        } else {
-            console.log('Image delete result:', result);
-        }
-        });
-      await Post.findByIdAndDelete(id);
-  
-      const user = await User.findByIdAndUpdate(
-        userId,
+  const { commentId, post } = req.body;
+  try {
+    const { mention, remaining } = extractMention(req.body.comment);
+    const CommentData = new Comment({
+      text: remaining,
+      owner: req.body.userId,
+      replies: [],
+    });
+    console.log("Naina", mention, remaining, CommentData);
+    const savedComment = await CommentData.save();
+    let updateUserResult;
+    if (mention) {
+      updateUserResult = await Comment.findByIdAndUpdate(
+        commentId,
         {
-          $pull: { post: id },
-          $inc: { nPost: -1 },
+          $push: { replies: savedComment._id },
+          $inc: { nReply: 1 },
         },
         { new: true }
       );
-  
-      res.status(200).json({ message: 'Post deleted successfully',user });
-    } catch (error) {
-      console.error('Error deleting post:', error);
-      res.status(500).json({ message: 'Server error' });
+      console.log('Comment updated:', updateUserResult);
+    } else {
+      updateUserResult = await Post.findByIdAndUpdate(
+        req.body.post,
+        {
+          $push: { comments: savedComment._id },
+          $inc: { nComments: 1 },
+        },
+        { new: true }
+      );
     }
-  };
-const deleteAll = async (req, res) => {
-    const { userId } = req.params;
-  
-    try {
-      const result = await Comment.deleteMany({});
-    } catch (error) {
-      console.error('Error deleting posts:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  };
-const allPosts = async (req, res) => {
-    try {
-        const posts = await Post.find({}).populate('postOwner');
-      //console.log(posts);
-      res.json({
-        posts
-    });
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      res.status(500).send('Server error');
-    }
-  };
 
-module.exports = { createPost, getPost, updatePost, deletePost, allPosts,deleteAll };
+
+    res.status(200).json({ savedComment, updateUserResult }); // Sending the saved comment back in the response
+  } catch (error) {
+    console.error("Error updating post with new comment:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const deletePost = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    const userId = post.postOwner._id;
+    console.log(post.videourl, "data to delete");
+    const urlParts = post.videourl.split('/');
+    const publicIdWithExtension = urlParts.slice(-1)[0];
+    const publicId = publicIdWithExtension.split('.')[0];
+
+    console.log('Extracted Public ID:', publicId); // Should print: wanderlust_DEV/jhzsrwgy5o0rddipl22u
+
+    await cloudinary.uploader.destroy(`wanderlust_DEV/${publicId}`, (error, result) => {
+      if (error) {
+        console.error('Error deleting image:', error);
+      } else {
+        console.log('Image delete result:', result);
+      }
+    });
+    await Post.findByIdAndDelete(id);
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $pull: { post: id },
+        $inc: { nPost: -1 },
+      },
+      { new: true }
+    );
+
+    res.status(200).json({ message: 'Post deleted successfully', user });
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+const deleteAll = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const result = await Comment.deleteMany({});
+  } catch (error) {
+    console.error('Error deleting posts:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+const allPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({}).populate('postOwner');
+    //console.log(posts);
+    res.json({
+      posts
+    });
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    res.status(500).send('Server error');
+  }
+};
+const likePost = async (req, res) => {
+  const postId = req.params.id;
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: "User ID missing" });
+
+  try {
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    const isLiked = post.likes.includes(userId);
+    let updatedPost;
+    if (isLiked) {
+      updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        { $pull: { likes: userId }, $inc: { nLikes: -1 } },
+        { new: true }
+      );
+    } else {
+      updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        { $push: { likes: userId }, $inc: { nLikes: 1 } },
+        { new: true }
+      );
+    }
+    res.json({ likes: updatedPost.likes });
+  } catch (error) {
+    console.error('Error liking post:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const getPostLikesDetails = async (req, res) => {
+  const { id } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+
+  try {
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Likes are stored sequentially; usually oldest first. Let's return them sequentially.
+    // If you want newest first, you'd Reverse the slice logic. We'll do simple slice here.
+    // Reversed slice for newest likes first:
+    const reversedLikes = [...post.likes].reverse();
+    const startIndex = (page - 1) * limit;
+    const paginatedIds = reversedLikes.slice(startIndex, startIndex + limit);
+
+    const users = await User.find({ _id: { $in: paginatedIds } }).select('username profile name');
+    
+    // Sort the users to match the array order since $in returns them in arbitrary order
+    const sortedUsers = paginatedIds.map(id => users.find(u => String(u._id) === String(id))).filter(Boolean);
+
+    res.json({
+      users: sortedUsers,
+      hasMore: startIndex + limit < reversedLikes.length
+    });
+  } catch (error) {
+    console.error('Error fetching like details:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports = { createPost, getPost, getPostByUser, updatePost, deletePost, allPosts, deleteAll, likePost, getPostLikesDetails };

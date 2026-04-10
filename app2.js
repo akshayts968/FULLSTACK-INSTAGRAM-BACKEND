@@ -13,7 +13,8 @@ const authRoutes = require('./routes/auth');
 const commentRoutes = require('./routes/comment');
 const messageRoutes = require('./routes/message');
 const extraRoutes = require('./routes/other');
-
+const cloudinaryRoutes = require('./routes/cloudinary');
+const notificationRoutes = require('./routes/notification');
 const app = express();
 require('dotenv').config();
 
@@ -41,5 +42,7 @@ app.use('/Messages', messageRoutes);
 app.use('/user', userRoutes);
 app.use('/comment', commentRoutes);
 app.use('/post', postRoutes);
+app.use('/cloudinary',cloudinaryRoutes);
+app.use('/notifications', notificationRoutes);
 app.use('/', extraRoutes);
 module.exports = app;

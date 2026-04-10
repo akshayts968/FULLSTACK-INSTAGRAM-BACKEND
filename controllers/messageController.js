@@ -1,15 +1,31 @@
 const Message = require('../model/Message');
+const Notification = require('../model/Notification');
+const User = require('../model/User');
 
 const sendMessage = async (req, res) => {
     const { sendId, rId } = req.params;
-    const { content } = req.body;
+    const { content, media } = req.body;
     try {
         const message = new Message({
             sender: sendId,
             receiver: rId,
-            content: content
+            content: content || "",
+            media: media || []
         });
         await message.save();
+        
+        const senderUser = await User.findById(sendId);
+        if (senderUser) {
+            const notif = new Notification({
+                recipient: rId,
+                sender: sendId,
+                type: 'message',
+                content: content ? (content.length > 25 ? content.slice(0, 25) + "..." : content) : "Sent an attachment",
+                link: `/message/${senderUser.username}`
+            });
+            await notif.save();
+        }
+
         res.json(message);
     } catch (error) {
         console.error('Error sending message:', error);
@@ -25,7 +41,7 @@ const getMessages = async (req, res) => {
                 { sender: userId, receiver: receiverId },
                 { sender: receiverId, receiver: userId }
             ]
-        }).sort({ createdAt: 1 });
+        }).sort({ timestamp: 1 });
         res.json(messages);
     } catch (error) {
         console.error('Error fetching messages:', error);
@@ -38,4 +54,8 @@ const deleteMessage = async (req, res) => {
     res.status(200).json({ message: 'Message deleted successfully' });
 };
 
+const msgImage = async (req, res) => {
+    await Message.findByIdAndDelete(req.params.messageId);
+    res.status(200).json({ message: 'Message deleted successfully' });
+};
 module.exports = { sendMessage, getMessages, deleteMessage };

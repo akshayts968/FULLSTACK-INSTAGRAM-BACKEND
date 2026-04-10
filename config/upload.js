@@ -1,13 +1,12 @@
-const cloudinary = require('../config/cloudinary');
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const storage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-        folder: 'wanderlust_DEV',
-        allowedFormats: ['png', 'jpg', 'jpeg'],
-    },
+
+// Store file in memory to securely proxy stream it to Cloudinary later safely
+const storage = multer.memoryStorage();
+
+// Set file size limit to 50MB for video support
+const upload = multer({ 
+    storage,
+    limits: { fileSize: 50 * 1024 * 1024 } 
 });
 
-const upload = multer({ storage });
 module.exports = upload;
