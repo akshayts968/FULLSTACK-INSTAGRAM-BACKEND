@@ -16,6 +16,7 @@ const extraRoutes = require('./routes/other');
 const cloudinaryRoutes = require('./routes/cloudinary');
 const notificationRoutes = require('./routes/notification');
 const signupRoutes = require('./routes/signup');
+const albumRoutes = require('./routes/album');
 const app = express();
 require('dotenv').config();
 
@@ -46,5 +47,6 @@ app.use('/comment', commentRoutes);
 app.use('/post', postRoutes);
 app.use('/cloudinary', cloudinaryRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/albums', albumRoutes);
 app.use('/', extraRoutes);
 module.exports = app;
