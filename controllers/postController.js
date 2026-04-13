@@ -3,6 +3,16 @@ const User = require('../model/User');
 const Comment = require('../model/Comment');
 const cloudinary = require('../config/cloudinary')
 
+const canViewPrivateContent = (owner, viewerId) => {
+  if (!owner) return false;
+  if (!owner.isPrivate) return true;
+  if (!viewerId) return false;
+  const viewerIdStr = String(viewerId);
+  const isOwner = String(owner._id) === viewerIdStr;
+  const isFollower = (owner.followers || []).some((id) => String(id) === viewerIdStr);
+  return isOwner || isFollower;
+};
+
 const extractMention = (comment) => {
   if (!comment) return { mention: null, remaining: "" };
   const strComment = String(comment);
@@ -100,7 +110,14 @@ const createPost = async (req, res) => {
 
 const getPost = async (req, res) => {
   try {
+    const viewerId = req.query.viewerId;
     const user = await User.findById(req.params.id).populate("post");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (!canViewPrivateContent(user, viewerId)) {
+      return res.status(403).json({ message: "This account is private. Follow to view posts." });
+    }
     res.json({ data: user.post, User: user });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -109,6 +126,7 @@ const getPost = async (req, res) => {
 
 const getPostByUser = async (req, res) => {
   try {
+    const viewerId = req.query.viewerId;
     const queryParam = req.params.username;
     let query = { username: queryParam };
     const mongoose = require('mongoose');
@@ -117,7 +135,11 @@ const getPostByUser = async (req, res) => {
     }
     const user = await User.findOne(query).populate("post");
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json({ data: user.post, User: user });
+    const isAllowed = canViewPrivateContent(user, viewerId);
+    if (!isAllowed) {
+      return res.json({ data: [], User: user, isPrivateLocked: true });
+    }
+    return res.json({ data: user.post, User: user, isPrivateLocked: false });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -216,10 +238,12 @@ const deleteAll = async (req, res) => {
 };
 const allPosts = async (req, res) => {
   try {
+    const viewerId = req.query.viewerId;
     const posts = await Post.find({}).populate('postOwner');
+    const filteredPosts = posts.filter((post) => canViewPrivateContent(post.postOwner, viewerId));
     //console.log(posts);
     res.json({
-      posts
+      posts: filteredPosts
     });
   } catch (error) {
     console.error('Error fetching data:', error);

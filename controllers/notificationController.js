@@ -42,4 +42,14 @@ const markSenderAsRead = async (req, res) => {
     }
 };
 
-module.exports = { getNotifications, markAsRead, markSenderAsRead };
+const deleteNotification = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await Notification.findByIdAndDelete(id);
+        res.json({ message: 'Notification deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete notification' });
+    }
+};
+
+module.exports = { getNotifications, markAsRead, markSenderAsRead, deleteNotification };

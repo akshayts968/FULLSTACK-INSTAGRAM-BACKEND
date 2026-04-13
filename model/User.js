@@ -11,6 +11,13 @@ const newUser=new Schema({
     story:{
         type:String,
     },
+    stories: [
+        {
+            mediaUrl: { type: String, required: true },
+            mediaType: { type: String, enum: ['image', 'video'], default: 'image' },
+            createdAt: { type: Date, default: Date.now },
+        }
+    ],
     highlight:[
         {
             name: { type: String, default: 'Highlight' },
@@ -42,6 +49,12 @@ const newUser=new Schema({
             ref:"User",
         }
     ],
+    pendingFollowRequests: [
+        {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+        }
+    ],
     nFollowers:{
         type:Number,
         default:0
@@ -56,6 +69,10 @@ const newUser=new Schema({
     },
     field:{
         type:String,
+    },
+    isPrivate: {
+        type: Boolean,
+        default: false,
     },
     thread:{
         type:String,

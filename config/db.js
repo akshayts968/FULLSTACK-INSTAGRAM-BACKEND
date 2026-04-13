@@ -5,6 +5,9 @@ require('dotenv').config();
 
 const connectDB = async () => {
   try {
+    if (!process.env.MONGO) {
+      throw new Error('MONGO is missing in environment variables');
+    }
     await mongoose.connect(process.env.MONGO, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -21,11 +24,12 @@ const connectDB = async () => {
       touchAfter: 24 * 3600,
   });
 
-store.on("error",()=>{
-    console.log("ERROR in MONGO SESSION STORE",err);
+store.on("error",(err)=>{
+    console.log("ERROR in MONGO SESSION STORE", err);
 });
   } catch (err) {
     console.log("Error connecting to DB:", err);
+    throw err;
   }
 };
 

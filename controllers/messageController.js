@@ -36,13 +36,29 @@ const sendMessage = async (req, res) => {
 const getMessages = async (req, res) => {
     const { userId, receiverId } = req.params;
     try {
-        const messages = await Message.find({
+        const offset = Number(req.query.offset || 0);
+        const limit = Number(req.query.limit || 20);
+        const safeOffset = Number.isNaN(offset) ? 0 : Math.max(0, offset);
+        const safeLimit = Number.isNaN(limit) ? 20 : Math.max(1, Math.min(50, limit));
+
+        const query = {
             $or: [
                 { sender: userId, receiver: receiverId },
                 { sender: receiverId, receiver: userId }
             ]
-        }).sort({ timestamp: 1 });
-        res.json(messages);
+        };
+
+        const total = await Message.countDocuments(query);
+        const messages = await Message.find({
+            ...query
+        })
+            .sort({ timestamp: -1 })
+            .skip(safeOffset)
+            .limit(safeLimit);
+
+        const orderedMessages = messages.reverse();
+        const hasMore = safeOffset + messages.length < total;
+        res.json({ messages: orderedMessages, hasMore, total });
     } catch (error) {
         console.error('Error fetching messages:', error);
         res.status(500).json({ error: 'Failed to fetch messages' });

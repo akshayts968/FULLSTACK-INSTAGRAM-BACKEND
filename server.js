@@ -148,8 +148,13 @@ io.on('connection', (socket) => {
         }
     });
 });
-connectDB().then(() => {
-    server.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+connectDB()
+    .then(() => {
+        server.listen(PORT, () => {
+            console.log(`Server running on http://localhost:${PORT}`);
+        });
+    })
+    .catch((error) => {
+        console.error('Failed to start server due to DB connection issue:', error.message);
+        process.exit(1);
     });
-});
