@@ -2,6 +2,7 @@ const Post = require('../model/Post');
 const User = require('../model/User');
 const Comment = require('../model/Comment');
 const cloudinary = require('../config/cloudinary')
+const mongoose = require('mongoose');
 
 const canViewPrivateContent = (owner, viewerId) => {
   if (!owner) return false;
@@ -80,9 +81,15 @@ const createPost = async (req, res) => {
         parsedTags = typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags;
       } catch (e) {
         console.error('Tag parsing error:', e);
-        parsedTags = [req.body.tags];
+        parsedTags = Array.isArray(req.body.tags) ? req.body.tags : String(req.body.tags).split(',');
       }
     }
+    if (!Array.isArray(parsedTags)) parsedTags = [parsedTags];
+    parsedTags = [...new Set(
+      parsedTags
+        .map((id) => String(id).trim())
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    )];
 
     const newPost = new Post({
       videourl: postUrl,

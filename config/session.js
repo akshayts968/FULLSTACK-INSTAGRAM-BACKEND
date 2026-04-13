@@ -1,5 +1,5 @@
 const sessionOptions = {
-    secret: "mysupersecretcode",
+    secret: process.env.SESSION_SECRET || "mysupersecretcode",
     resave: false,
     saveUninitialized: true,
     cookie: {

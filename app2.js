@@ -40,7 +40,7 @@ passport.deserializeUser(User.deserializeUser());
 app.use(express.urlencoded({ extended: true }));
 app.use('/login', authRoutes);
 app.use('/signup', signupRoutes);
-app.use('/Messages', messageRoutes);
+app.use('/messages', messageRoutes);
 app.use('/user', userRoutes);
 app.use('/comment', commentRoutes);
 app.use('/post', postRoutes);

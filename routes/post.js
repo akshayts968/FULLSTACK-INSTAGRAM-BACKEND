@@ -8,7 +8,7 @@ const router = express.Router();
 //app.get('/api/posts',
 router.get('/all', allPosts);
 //app.get('/deleteAllPosts/:userId', 
-router.delete('/',deleteAll)
+router.delete('/',deleteAll);
 //app.post("/:id/Post", upload.single('Post'), 
 router.post('/:id/create',upload.single('Post'), createPost);
 //app.get("/post/:id", 
@@ -19,6 +19,4 @@ router.get('/user/:username', require('../controllers/postController').getPostBy
 router.put('/:id',updatePost);
 router.put('/like/:id', likePost);
 router.delete('/:id',  deletePost);
-router.get('/all', allPosts);
-router.post("/Messages/:sendId/:rId",);
 module.exports = router;
