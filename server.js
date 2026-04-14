@@ -2,6 +2,7 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./app2');
 const connectDB = require('./config/db');
+const { connectRedis } = require('./config/redis');
 
 const server = http.createServer(app);
 const PORT = process.env.PORT || 8080;
@@ -149,7 +150,8 @@ io.on('connection', (socket) => {
     });
 });
 connectDB()
-    .then(() => {
+    .then(async () => {
+        await connectRedis();
         server.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT}`);
         });

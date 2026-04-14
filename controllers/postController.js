@@ -3,6 +3,9 @@ const User = require('../model/User');
 const Comment = require('../model/Comment');
 const cloudinary = require('../config/cloudinary')
 const mongoose = require('mongoose');
+const { redisClient } = require('../config/redis');
+
+const CACHE_TTL = 300; // 5 minutes in seconds
 
 const canViewPrivateContent = (owner, viewerId) => {
   if (!owner) return false;
@@ -100,7 +103,19 @@ const createPost = async (req, res) => {
       taggedUsers: parsedTags
     });
 
+
     const savedPost = await newPost.save();
+
+    // Cache invalidation: Clear all feed caches when a new post is created
+    try {
+      if (redisClient.isOpen) {
+        const keys = await redisClient.keys('feed:*');
+        if (keys && keys.length > 0) await redisClient.del(...keys);
+        console.log("Feed cache invalidated due to new post");
+      }
+    } catch (err) {
+      console.error("Redis invalidation error:", err);
+    }
 
     const user = await User.findByIdAndUpdate(
       id,
@@ -218,6 +233,17 @@ const deletePost = async (req, res) => {
     });
     await Post.findByIdAndDelete(id);
 
+    // Cache invalidation: Clear all feed caches when a post is deleted
+    try {
+      if (redisClient.isOpen) {
+        const keys = await redisClient.keys('feed:*');
+        if (keys && keys.length > 0) await redisClient.del(...keys);
+        console.log("Feed cache invalidated due to post deletion");
+      }
+    } catch (err) {
+      console.error("Redis invalidation error:", err);
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
       {
@@ -245,13 +271,45 @@ const deleteAll = async (req, res) => {
 };
 const allPosts = async (req, res) => {
   try {
-    const viewerId = req.query.viewerId;
+    const viewerId = req.query.viewerId || 'anonymous';
+    const cacheKey = `feed:${viewerId}`;
+
+    // 1. Try to get from Redis
+    if (redisClient.isOpen) {
+      try {
+        const cachedData = await redisClient.get(cacheKey);
+        if (cachedData) {
+          console.log(`Cache Hit for ${cacheKey}`);
+          // @upstash/redis might auto-parse JSON if it was stored as an object, 
+          // but we stored a string, so we parse it if it's a string.
+          const data = typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
+          return res.json(data);
+        }
+      } catch (redisError) {
+        console.error("Redis GET error:", redisError);
+      }
+    }
+
+    // 2. Cache Miss: Fetch from DB
+    console.log(`Cache Miss for ${cacheKey}. Fetching from DB...`);
     const posts = await Post.find({}).populate('postOwner');
-    const filteredPosts = posts.filter((post) => canViewPrivateContent(post.postOwner, viewerId));
-    //console.log(posts);
-    res.json({
-      posts: filteredPosts
-    });
+    const filteredPosts = posts.filter((post) => canViewPrivateContent(post.postOwner, req.query.viewerId));
+    
+    const responseData = { posts: filteredPosts };
+
+    // 3. Store in Redis
+    if (redisClient.isOpen) {
+      try {
+        await redisClient.set(cacheKey, JSON.stringify(responseData), {
+          ex: CACHE_TTL // @upstash/redis uses lowercase 'ex' or standard options
+        });
+        console.log(`Cached data for ${cacheKey}`);
+      } catch (redisError) {
+        console.error("Redis SET error:", redisError);
+      }
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error fetching data:', error);
     res.status(500).send('Server error');
