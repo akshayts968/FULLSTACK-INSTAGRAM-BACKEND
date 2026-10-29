@@ -153,7 +153,7 @@ connectDB()
     .then(async () => {
         await connectRedis();
         server.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
+            console.log(`Server running Port:${PORT}`);
         });
     })
     .catch((error) => {
