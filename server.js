@@ -149,11 +149,12 @@ io.on('connection', (socket) => {
         }
     });
 });
+// ...
 connectDB()
     .then(async () => {
         await connectRedis();
-        server.listen(port, '0.0.0.0', () => {
-          console.log(`Server running on port ${port}`);
+        server.listen(PORT, '0.0.0.0', () => {           // ✅ Use PORT
+          console.log(`Server running on port ${PORT}`); // ✅ Use PORT
         });
     })
     .catch((error) => {
