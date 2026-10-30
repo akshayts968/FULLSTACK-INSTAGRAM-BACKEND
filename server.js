@@ -152,8 +152,8 @@ io.on('connection', (socket) => {
 connectDB()
     .then(async () => {
         await connectRedis();
-        server.listen(PORT, () => {
-            console.log(`Server running Port:${PORT}`);
+        server.listen(port, '0.0.0.0', () => {
+          console.log(`Server running on port ${port}`);
         });
     })
     .catch((error) => {
